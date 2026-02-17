@@ -3,193 +3,135 @@ import random
 from fractions import Fraction
 
 # ==========================================
-# 1. 介面設定 (乾淨、大字體、考試風)
+# 1. 介面設定 (教科書風格)
 # ==========================================
-st.set_page_config(page_title="標準分數練習 (優化版)", page_icon="📝", layout="centered")
+st.set_page_config(page_title="標準數學練習", page_icon="📐", layout="centered")
 
 st.markdown("""
 <style>
-    .stApp { background-color: #f8f9fa; color: #212529; }
+    .stApp { background-color: #f8f9fa; color: #000; }
     
-    /* 題目區 */
-    .question-card {
+    /* 題目顯示區 - 加大字體與間距 */
+    .math-display {
         background: white;
         padding: 40px;
-        border-radius: 15px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        border-radius: 20px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
         text-align: center;
-        border-bottom: 5px solid #3b82f6;
         margin-bottom: 30px;
+        border: 2px solid #e9ecef;
     }
     
-    /* 詳解區 */
-    .solution-box {
-        background: #eff6ff;
-        border-left: 5px solid #3b82f6;
-        padding: 15px;
-        margin-top: 20px;
-        text-align: left;
-        font-family: monospace;
-        font-size: 1.1rem;
-    }
+    /* 讓 Streamlit 的 LaTeX 字體變大 */
+    .katex { font-size: 2.5em !important; }
     
-    /* 錯誤區 */
-    .error-box {
-        background: #fef2f2;
-        border-left: 5px solid #ef4444;
-        padding: 15px;
-        margin-top: 20px;
-        text-align: left;
-    }
-
-    /* 計分板 */
-    .score-board {
-        font-size: 1.2rem;
-        font-weight: bold;
-        color: #64748b;
-        text-align: right;
+    /* 按鈕樣式 */
+    div.stButton > button {
+        font-size: 1.3rem !important;
+        font-weight: bold !important;
+        padding: 12px !important;
+        border-radius: 10px !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. 核心邏輯 (含步驟解析)
+# 2. 核心邏輯
 # ==========================================
 
-def get_op_latex(op):
-    return {'+': '+', '-': '-', '×': '\\times', '÷': '\\div'}[op]
-
-def calculate_step(a, op, b):
-    if op == '+': return a + b
-    if op == '-': return a - b
-    if op == '×': return a * b
-    if op == '÷': return a / b if b != 0 else a
-    return 0
+def get_op_symbol(op):
+    # 轉成標準數學符號
+    if op == '*': return '\\times'
+    if op == '/': return '\\div'
+    return op
 
 def generate_question():
-    """生成題目 + 詳解步驟"""
+    """生成題目，並轉為漂亮的 LaTeX 格式"""
     dens = [2, 3, 4, 5, 6, 8]
     
-    # 生成 3 個數
+    # 生成 3 個分數
     nums = [Fraction(random.randint(1, 4), random.choice(dens)) for _ in range(3)]
     
-    # 生成符號
-    ops = [random.choice(['+', '-', '×', '÷']) for _ in range(2)]
+    # 生成 2 個運算符
+    ops = [random.choice(['+', '-', '*', '/']) for _ in range(2)]
     
-    # 決定運算順序
-    priority_ops = ['×', '÷']
+    # 1. 計算正確答案 (Python 邏輯)
+    # 我們構建一個字串來讓 Python eval 計算，確保先乘除後加減邏輯正確
+    # Fraction 類別支援標準運算
+    expr_str = f"nums[0] {ops[0]} nums[1] {ops[1]} nums[2]"
+    # 使用 eval 前確保環境安全 (這裡只有數字和 Fraction，安全)
+    # 這裡需要把 list 傳進去給 eval 用
+    ans = eval(expr_str, {"nums": nums, "Fraction": Fraction})
     
-    step1_val = 0
-    final_ans = 0
-    explanation = ""
+    # 2. 建構漂亮的顯示字串 (LaTeX)
+    # 使用 \frac{分子}{分母} 這是最標準的寫法
+    def to_latex(f):
+        return f"\\frac{{{f.numerator}}}{{{f.denominator}}}"
     
-    # A op1 B op2 C
-    op1, op2 = ops[0], ops[1]
-    n1, n2, n3 = nums[0], nums[1], nums[2]
-    
-    # 判斷先算哪邊
-    if op2 in priority_ops and op1 not in priority_ops:
-        # 先算後面 (B op2 C)
-        step1_val = calculate_step(n2, op2, n3)
-        final_ans = calculate_step(n1, op1, step1_val)
-        explanation = f"""
-        1. 先算乘除： {n2} {op2} {n3} = {step1_val}
-        2. 再算加減： {n1} {op1} {step1_val} = {final_ans}
-        """
-    else:
-        # 先算前面 (A op1 B)
-        step1_val = calculate_step(n1, op1, n2)
-        final_ans = calculate_step(step1_val, op2, n3)
-        explanation = f"""
-        1. 依照順序/先乘除： {n1} {op1} {n2} = {step1_val}
-        2. 再算下一步： {step1_val} {op2} {n3} = {final_ans}
-        """
-
-    # LaTeX 題目字串
-    tex = f"{n1.numerator}/{n1.denominator} {get_op_latex(op1)} {n2.numerator}/{n2.denominator} {get_op_latex(op2)} {n3.numerator}/{n3.denominator}"
-    
-    # 為了顯示漂亮，把假分數變成真分數的顯示也可以(這裡先維持分數)
-    tex = tex.replace('/', '\\over ') # 簡單轉 LaTeX 分數
+    tex = f"{to_latex(nums[0])} {get_op_symbol(ops[0])} {to_latex(nums[1])} {get_op_symbol(ops[1])} {to_latex(nums[2])}"
     
     return {
         "latex": tex,
-        "answer": final_ans,
-        "explanation": explanation
+        "answer": ans
     }
 
 # 初始化
-if 'q' not in st.session_state:
-    st.session_state.q = generate_question()
-if 'score' not in st.session_state:
-    st.session_state.score = 0
+if 'q_data' not in st.session_state:
+    st.session_state.q_data = generate_question()
 if 'feedback' not in st.session_state:
     st.session_state.feedback = None # None, 'correct', 'wrong'
 
-def submit():
-    user_frac = Fraction(st.session_state.u_num, st.session_state.u_den)
-    ans = st.session_state.q['answer']
-    
-    if user_frac == ans:
-        st.session_state.feedback = 'correct'
-        st.session_state.score += 1
-    else:
-        st.session_state.feedback = 'wrong'
+def check_answer():
+    try:
+        user_val = Fraction(st.session_state.u_num, st.session_state.u_den)
+        if user_val == st.session_state.q_data['answer']:
+            st.session_state.feedback = 'correct'
+        else:
+            st.session_state.feedback = 'wrong'
+    except:
+        st.error("請輸入有效的數字")
 
-def next_q():
-    st.session_state.q = generate_question()
+def next_question():
+    st.session_state.q_data = generate_question()
     st.session_state.feedback = None
-    # 清空輸入框需要用 key reset，這裡簡單用 rerurn
     st.session_state.u_num = 0
     st.session_state.u_den = 1
 
 # ==========================================
-# 3. 介面渲染
+# 3. 畫面渲染
 # ==========================================
 
-# 頂部
-col_l, col_r = st.columns([1, 1])
-with col_l:
-    st.title("📝 分數運算練習")
-with col_r:
-    st.markdown(f'<div class="score-board">🏆 連對題數：{st.session_state.score}</div>', unsafe_allow_html=True)
+st.title("📐 分數四則運算")
+st.caption("請計算下列算式，並輸入最簡分數。")
 
-# 題目區
-q = st.session_state.q
-st.markdown(f'<div class="question-card">', unsafe_allow_html=True)
-st.latex(f"\\huge {q['latex']} = ?")
+# 顯示題目 (使用 st.latex 渲染標準數學式)
+q = st.session_state.q_data
+st.markdown('<div class="math-display">', unsafe_allow_html=True)
+st.latex(q['latex'])
 st.markdown('</div>', unsafe_allow_html=True)
 
-# 答題區 (使用 Form 讓 Enter 鍵生效)
+# 答題區
 if st.session_state.feedback is None:
-    with st.form("ans_form"):
-        c1, c2, c3 = st.columns([2, 2, 1])
+    with st.form("answer_form"):
+        c1, c2, c3 = st.columns([1, 1, 1])
         with c1:
             st.number_input("分子", value=0, step=1, key="u_num")
         with c2:
             st.number_input("分母", value=1, step=1, key="u_den")
         with c3:
-            st.write("") # Spacer
-            st.write("")
-            submitted = st.form_submit_button("提交答案", type="primary", use_container_width=True, on_click=submit)
+            st.write("") # 排版用
+            st.write("") 
+            st.form_submit_button("送出答案", type="primary", use_container_width=True, on_click=check_answer)
 
-# 結果回饋區
+# 結果回饋
 else:
+    ans = st.session_state.q_data['answer']
+    ans_str = f"{ans.numerator}/{ans.denominator}" if ans.denominator != 1 else f"{ans.numerator}"
+    
     if st.session_state.feedback == 'correct':
-        st.success(f"✅ 答對了！答案就是 {q['answer']}")
+        st.success(f"✅ 答對了！答案是 {ans_str}")
         st.balloons()
     else:
-        st.error(f"❌ 答錯囉... 正確答案是 {q['answer']}")
-        # 顯示詳解
-        st.markdown(f"""
-        <div class="solution-box">
-            <b>💡 計算過程解析：</b><br>
-            {q['explanation']}
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.write("")
-    if st.button("➡️ 下一題 (Next)", type="primary", on_click=next_q):
-        st.rerun()
-
-st.markdown("---")
-st.caption("提示：這就是最標準的練習模式。算完請直接按 Enter 提交。")
+        st.error(f"❌ 答錯囉，正確答案是： {ans_str}")
+        
+    st.button("➡️ 下一題", type="primary", on_click=next_question)
