@@ -1,174 +1,212 @@
 import streamlit as st
 import random
 from fractions import Fraction
+import uuid
 
 # ==========================================
-# 1. 介面設定 (乾淨、大字體)
+# 1. 設定與樣式 (積木風格)
 # ==========================================
-st.set_page_config(page_title="標準分數運算練習", page_icon="📝", layout="centered")
+st.set_page_config(page_title="Math Collapse: 運算消消樂", page_icon="🧱", layout="centered")
 
 st.markdown("""
 <style>
-    .stApp { background-color: #f0f2f6; color: #000; }
+    .stApp { background-color: #2b2d42; color: white; }
     
-    /* 題目顯示區 */
-    .question-box {
-        background-color: #ffffff;
-        padding: 30px;
-        border-radius: 15px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        text-align: center;
+    /* 算式容器 */
+    .equation-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 15px;
+        padding: 40px 20px;
+        background: #8d99ae;
+        border-radius: 20px;
         margin-bottom: 20px;
-        border: 2px solid #3b82f6;
+        box-shadow: inset 0 0 20px rgba(0,0,0,0.2);
+        min-height: 150px;
+        flex-wrap: wrap;
     }
-    
-    /* 結果顯示區 */
-    .result-box {
-        padding: 15px;
-        border-radius: 10px;
+
+    /* 數字積木 (靜態) */
+    .num-block {
+        background: #edf2f4;
+        color: #2b2d42;
+        padding: 15px 20px;
+        border-radius: 12px;
+        font-family: 'Courier New', monospace;
+        font-size: 1.5rem;
+        font-weight: bold;
+        box-shadow: 0 5px 0 #adb5bd;
+        min-width: 80px;
         text-align: center;
-        font-size: 1.2rem;
-        font-weight: bold;
-        margin-top: 20px;
     }
-    .correct { background-color: #dcfce7; color: #166534; border: 1px solid #166534; }
-    .wrong { background-color: #fee2e2; color: #991b1b; border: 1px solid #991b1b; }
-    
-    /* 按鈕樣式 */
+
+    /* 運算符按鈕 (互動熱點) */
     div.stButton > button {
-        width: 100%;
-        font-size: 1.1rem;
-        font-weight: bold;
+        width: 60px !important;
+        height: 60px !important;
+        border-radius: 15px !important;
+        font-size: 1.8rem !important;
+        font-weight: 900 !important;
+        background-color: #ef233c !important; /* 紅色 */
+        color: white !important;
+        border: none !important;
+        box-shadow: 0 5px 0 #d90429 !important;
+        transition: all 0.1s;
+    }
+    div.stButton > button:hover {
+        transform: translateY(2px);
+        box-shadow: 0 3px 0 #d90429 !important;
+    }
+    div.stButton > button:active {
+        transform: translateY(5px);
+        box-shadow: none !important;
+    }
+
+    /* 步驟紀錄 */
+    .step-log {
+        background: rgba(0,0,0,0.3);
         padding: 10px;
+        border-radius: 8px;
+        margin-top: 20px;
+        font-family: monospace;
+        color: #89f7fe;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. 出題邏輯 (加減乘除混合)
+# 2. 邏輯核心
 # ==========================================
 
-def generate_question():
-    """生成一道分數四則運算題"""
-    # 數字範圍 (避免分母太大太難算)
-    denominators = [2, 3, 4, 5, 6, 8, 10]
+def format_fraction(val):
+    if val.denominator == 1:
+        return str(val.numerator)
+    return f"{val.numerator}/{val.denominator}"
+
+def generate_level(difficulty=1):
+    """生成算式鏈"""
+    dens = [2, 3, 4, 5]
+    ops = ['+', '-', '×', '÷']
     
-    # 生成 3 個分數 (A op1 B op2 C)
-    nums = []
-    for _ in range(3):
-        d = random.choice(denominators)
-        n = random.choice([1, 2, 3, 4, 5])
-        # 確保真分數或簡單假分數
-        if n >= d: n = d - 1 if d > 1 else 1
-        nums.append(Fraction(n, d))
+    # 難度決定長度
+    length = 3 if difficulty == 1 else 5 # 3個數 or 5個數
+    
+    expr = []
+    # 數
+    expr.append(Fraction(random.choice([1,2,3]), random.choice(dens)))
+    
+    for _ in range(length - 1):
+        # 符
+        expr.append(random.choice(ops))
+        # 數
+        expr.append(Fraction(random.choice([1,2,3]), random.choice(dens)))
         
-    # 隨機運算符 (包含加減乘除)
-    ops_pool = ['+', '-', '×', '÷']
-    op1 = random.choice(ops_pool)
-    op2 = random.choice(ops_pool)
-    
-    # 構建顯示字串 (用於 LaTeX)
-    def frac_latex(f):
-        return f"\\frac{{{f.numerator}}}{{{f.denominator}}}"
-    
-    question_latex = f"{frac_latex(nums[0])} {op1} {frac_latex(nums[1])} {op2} {frac_latex(nums[2])}"
-    
-    # 計算正確答案 (處理 Python 運算邏輯)
-    # 將顯示符號轉為程式運算符
-    real_op1 = '*' if op1 == '×' else ('/' if op1 == '÷' else op1)
-    real_op2 = '*' if op2 == '×' else ('/' if op2 == '÷' else op2)
-    
-    # 這裡要注意：Python 的 fraction 運算順序是正確的 (先乘除後加減)
-    # 我們直接構造一個 Python 表達式來算答案
-    # 為了安全，我們手動計算
-    
-    # 邏輯：A op1 B op2 C
-    # 如果 op1 是 +,- 且 op2 是 *,/ -> 先算 B op2 C
-    # 否則 -> 先算 A op1 B
-    
-    val_a, val_b, val_c = nums[0], nums[1], nums[2]
-    
-    # 輔助計算函數
-    def calc(a, op, b):
-        if op == '+': return a + b
-        if op == '-': return a - b
-        if op == '×': return a * b
-        if op == '÷': return a / b if b != 0 else a
-        return 0
-
-    priority_ops = ['×', '÷']
-    
-    ans = Fraction(0,1)
-    
-    # 情況 1: 後面優先 (A + B × C)
-    if op2 in priority_ops and op1 not in priority_ops:
-        step1 = calc(val_b, op2, val_c)
-        ans = calc(val_a, op1, step1)
-    # 情況 2: 前面優先或同級 (A × B + C 或 A × B × C)
-    else:
-        step1 = calc(val_a, op1, val_b)
-        ans = calc(step1, op2, val_c)
-
-    return {
-        "latex": question_latex,
-        "answer": ans,
-        "raw_str": f"{nums[0]} {op1} {nums[1]} {op2} {nums[2]}"
-    }
+    return expr
 
 # 初始化
-if 'q_data' not in st.session_state:
-    st.session_state.q_data = generate_question()
-if 'user_result' not in st.session_state:
-    st.session_state.user_result = None # None, 'correct', 'wrong'
+if 'blocks' not in st.session_state:
+    st.session_state.blocks = generate_level(1) # Level 1
+if 'logs' not in st.session_state:
+    st.session_state.logs = []
+if 'message' not in st.session_state:
+    st.session_state.message = "點擊運算符號來消除積木！(記得先乘除後加減)"
 
 # ==========================================
-# 3. 介面互動
+# 3. 互動處理
 # ==========================================
 
-st.title("📝 標準分數運算 (先乘除後加減)")
+def handle_click(index):
+    current_blocks = st.session_state.blocks
+    clicked_op = current_blocks[index]
+    
+    # 1. 檢查優先級 (先乘除後加減)
+    has_high = any(x in ['×', '÷'] for x in current_blocks if isinstance(x, str))
+    is_high = clicked_op in ['×', '÷']
+    
+    if has_high and not is_high:
+        st.toast("🚫 順序錯誤！還有乘除號 (× ÷) 沒算喔！", icon="⚠️")
+        return
 
-# 1. 顯示題目
-q = st.session_state.q_data
-st.markdown('<div class="question-box">', unsafe_allow_html=True)
-st.latex(f"\\Large {q['latex']} = ?")
-st.markdown('</div>', unsafe_allow_html=True)
-
-# 2. 輸入答案區域
-st.write("請輸入你的答案（最簡分數）：")
-col1, col2 = st.columns(2)
-with col1:
-    user_num = st.number_input("分子", value=0, step=1)
-with col2:
-    user_den = st.number_input("分母", value=1, step=1)
-
-# 3. 提交按鈕
-if st.button("提交答案"):
-    if user_den == 0:
-        st.error("分母不能為 0")
+    # 2. 執行計算 (消消樂)
+    left = current_blocks[index-1]
+    right = current_blocks[index+1]
+    
+    res = 0
+    if clicked_op == '+': res = left + right
+    elif clicked_op == '-': res = left - right
+    elif clicked_op == '×': res = left * right
+    elif clicked_op == '÷': res = left / right if right != 0 else left
+    
+    # 3. 記錄步驟 (讓學生看懂發生了什麼)
+    log_text = f"{format_fraction(left)} {clicked_op} {format_fraction(right)} = {format_fraction(res)}"
+    st.session_state.logs.append(log_text)
+    
+    # 4. 更新積木鏈
+    new_blocks = current_blocks[:index-1] + [res] + current_blocks[index+2:]
+    st.session_state.blocks = new_blocks
+    
+    if len(new_blocks) == 1:
+        st.balloons()
+        st.session_state.message = f"🎉 消除完成！最終答案：{format_fraction(res)}"
     else:
-        user_frac = Fraction(user_num, user_den)
-        correct_frac = q['answer']
-        
-        if user_frac == correct_frac:
-            st.session_state.user_result = 'correct'
-        else:
-            st.session_state.user_result = 'wrong'
+        st.session_state.message = "✅ 計算正確！積木合併了，繼續下一步..."
 
-# 4. 顯示結果與下一題
-if st.session_state.user_result == 'correct':
-    st.markdown(f'<div class="result-box correct">✅ 答對了！答案是 {q["answer"]}</div>', unsafe_allow_html=True)
-    if st.button("下一題 ➡️", type="primary"):
-        st.session_state.q_data = generate_question()
-        st.session_state.user_result = None
+def restart(difficulty):
+    st.session_state.blocks = generate_level(difficulty)
+    st.session_state.logs = []
+    st.session_state.message = "新局開始！"
+
+# ==========================================
+# 4. 畫面渲染
+# ==========================================
+
+col1, col2 = st.columns([3, 1])
+with col1:
+    st.title("🧱 運算消消樂")
+    st.caption(st.session_state.message)
+with col2:
+    diff = st.selectbox("難度", [1, 2], format_func=lambda x: "簡單 (3數)" if x==1 else "困難 (5數)")
+    if st.button("🔄 重來"):
+        restart(diff)
         st.rerun()
 
-elif st.session_state.user_result == 'wrong':
-    st.markdown(f'<div class="result-box wrong">❌ 答錯了... 正確答案是 {q["answer"]}</div>', unsafe_allow_html=True)
-    st.write("再試一次，或者直接跳過：")
-    if st.button("換一題 (跳過)"):
-        st.session_state.q_data = generate_question()
-        st.session_state.user_result = None
-        st.rerun()
+# --- 核心遊戲區 ---
+blocks = st.session_state.blocks
 
-st.markdown("---")
-st.caption("提示：記得先乘除後加減。如果有負數，請將負號填在分子。")
+if len(blocks) == 1:
+    # 勝利畫面
+    st.success(f"🏆 最終結果：{format_fraction(blocks[0])}")
+    st.markdown("### 📝 計算回顧：")
+    for log in st.session_state.logs:
+        st.code(log)
+    
+    if st.button("挑戰下一關 ➡️", type="primary"):
+        restart(diff)
+        st.rerun()
+else:
+    # 遊戲畫面：動態排列
+    st.markdown('<div class="equation-container">', unsafe_allow_html=True)
+    
+    # 使用 columns 排版
+    cols = st.columns(len(blocks))
+    
+    for i, item in enumerate(blocks):
+        with cols[i]:
+            if isinstance(item, Fraction):
+                # 數字積木 (白色)
+                st.markdown(f'<div class="num-block">{format_fraction(item)}</div>', unsafe_allow_html=True)
+            else:
+                # 符號按鈕 (紅色)
+                # key 必須唯一，所以加上 uuid
+                if st.button(item, key=f"btn_{i}_{uuid.uuid4()}"):
+                    handle_click(i)
+                    st.rerun()
+                    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # 顯示步驟紀錄 (即時回饋)
+    if st.session_state.logs:
+        st.markdown("**📜 已完成步驟：**")
+        for log in st.session_state.logs:
+            st.markdown(f'<div style="color:#aaa; font-family:monospace;">✔️ {log}</div>', unsafe_allow_html=True)
