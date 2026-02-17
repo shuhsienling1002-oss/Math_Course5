@@ -1,184 +1,208 @@
 import streamlit as st
 import random
-import time
 from fractions import Fraction
 import uuid
 
 # ==========================================
-# 1. 設定與樣式 (保證按鈕大且清楚)
+# 1. 遊戲設定與 CSS (暗黑地牢風)
 # ==========================================
-st.set_page_config(page_title="Math Fusion V3", page_icon="🔥", layout="centered")
+st.set_page_config(page_title="Math Dungeon", page_icon="⚔️", layout="centered")
 
 st.markdown("""
 <style>
-    /* 全局字體加大 */
-    .stApp { background-color: #1e1e2e; color: #fff; }
+    .stApp { background-color: #1a0b0b; color: #e5e5e5; }
     
-    /* 數字卡片：藍色方形 */
-    .num-card {
-        background: #3b82f6;
-        color: white;
-        padding: 20px 10px;
-        border-radius: 10px;
+    /* 怪物區 */
+    .monster-box {
+        background: #2d1b1b;
+        border: 4px solid #8B0000;
+        border-radius: 15px;
+        padding: 20px;
         text-align: center;
-        font-size: 1.5rem;
-        font-weight: bold;
-        border: 2px solid #60a5fa;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-        margin: 5px;
+        margin-bottom: 20px;
+        box-shadow: 0 0 20px rgba(139, 0, 0, 0.5);
     }
-
-    /* 符號按鈕區：確保按鈕置中且顯眼 */
+    .monster-hp-bar {
+        background: #444;
+        height: 30px;
+        border-radius: 15px;
+        overflow: hidden;
+        margin-top: 10px;
+        border: 2px solid #fff;
+    }
+    .hp-fill {
+        background: linear-gradient(90deg, #ff4d4d, #cc0000);
+        height: 100%;
+        transition: width 0.3s ease;
+    }
+    
+    /* 玩家手牌區 */
+    .hand-area {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 20px;
+    }
+    
+    /* 卡牌按鈕 (武器) */
     div.stButton > button {
-        width: 100% !important;
-        height: 60px !important;
-        font-size: 24px !important;
-        font-weight: 900 !important;
-        background-color: #ef4444 !important; /* 紅色按鈕 */
-        color: white !important;
-        border-radius: 50px !important; /* 圓角 */
-        border: 2px solid white !important;
+        background: linear-gradient(180deg, #2c3e50, #000);
+        color: #f1c40f !important;
+        border: 2px solid #f1c40f !important;
+        border-radius: 8px !important;
+        font-family: 'Courier New', monospace;
+        font-size: 1.5rem !important;
+        padding: 15px 20px !important;
+        width: 100%;
+        transition: transform 0.1s;
     }
     div.stButton > button:hover {
-        background-color: #dc2626 !important;
-        transform: scale(1.05);
+        transform: translateY(-5px);
+        background: #34495e;
+        box-shadow: 0 0 15px #f1c40f;
     }
     
-    /* 提示訊息 */
-    .instruction {
-        text-align: center;
-        font-size: 1.2rem;
-        color: #fbbf24;
-        margin-bottom: 20px;
-        background: #374151;
-        padding: 10px;
-        border-radius: 8px;
-    }
+    /* 傷害數字 */
+    .dmg-text { color: #ff4d4d; font-weight: bold; font-size: 1.2rem; }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. 核心邏輯 (保證不會生成壞題目)
+# 2. 遊戲核心邏輯
 # ==========================================
 
-def format_fraction(val):
-    """將分數轉為字串"""
-    if val.denominator == 1:
-        return str(val.numerator)
-    return f"{val.numerator}/{val.denominator}"
+def init_game():
+    """初始化一場戰鬥"""
+    # 怪物總血量 (目標) 固定為 1，方便理解分數
+    target = Fraction(1, 1)
+    
+    # 生成一組剛好能湊成 1 的手牌
+    # 邏輯：隨機切分
+    parts = []
+    current = Fraction(0, 1)
+    
+    # 隨機切 3-4 刀
+    options = [Fraction(1,2), Fraction(1,3), Fraction(1,4), Fraction(1,6), Fraction(1,8)]
+    
+    # 這裡用簡單的湊數邏輯：保證有解
+    # 方案 A: 1/2 + 1/2
+    # 方案 B: 1/2 + 1/4 + 1/4
+    # 方案 C: 1/3 + 1/3 + 1/3
+    # 方案 D: 1/2 + 1/3 + 1/6
+    
+    scenarios = [
+        [Fraction(1,2), Fraction(1,2)],
+        [Fraction(1,2), Fraction(1,4), Fraction(1,4)],
+        [Fraction(1,3), Fraction(1,3), Fraction(1,3)],
+        [Fraction(1,2), Fraction(1,3), Fraction(1,6)],
+        [Fraction(1,4), Fraction(1,4), Fraction(1,4), Fraction(1,4)],
+        [Fraction(1,2), Fraction(1,4), Fraction(1,8), Fraction(1,8)]
+    ]
+    
+    winning_hand = random.choice(scenarios)
+    
+    # 加入 1-2 張干擾牌 (垃圾武器)
+    decoys = [random.choice(options) for _ in range(2)]
+    
+    full_hand = winning_hand + decoys
+    random.shuffle(full_hand)
+    
+    st.session_state.target_hp = target
+    st.session_state.current_damage = Fraction(0, 1)
+    st.session_state.hand = full_hand
+    st.session_state.game_over = False
+    st.session_state.msg = "戰鬥開始！選擇卡牌湊出剛好 1 的傷害！"
 
-def generate_puzzle():
-    """生成題目：數字 - 符號 - 數字 - 符號 - 數字"""
-    denominators = [2, 3, 4, 5]
-    ops_pool = ['+', '-', '×', '÷']
-    
-    # 強制結構：[數, 符, 數, 符, 數]
-    expr = []
-    
-    # 第1個數
-    expr.append(Fraction(random.choice([1,2,3]), random.choice(denominators)))
-    # 第1個符號
-    expr.append(random.choice(ops_pool))
-    # 第2個數
-    expr.append(Fraction(random.choice([1,2,3]), random.choice(denominators)))
-    # 第2個符號
-    expr.append(random.choice(ops_pool))
-    # 第3個數
-    expr.append(Fraction(random.choice([1,2,3]), random.choice(denominators)))
-    
-    return expr
+if 'target_hp' not in st.session_state:
+    init_game()
 
-# 初始化
-if 'puzzle' not in st.session_state:
-    st.session_state.puzzle = generate_puzzle()
-if 'message' not in st.session_state:
-    st.session_state.message = "👉 請點擊「紅色運算符」來計算！"
-
-# ==========================================
-# 3. 動作處理 (點擊後發生什麼)
-# ==========================================
-
-def handle_click(index):
-    current_expr = st.session_state.puzzle
-    clicked_op = current_expr[index]
-    
-    # 1. 檢查規則：先乘除，後加減
-    # 檢查算式裡有沒有乘除號
-    has_mul_div = any(x in ['×', '÷'] for x in current_expr if isinstance(x, str))
-    is_clicking_mul_div = clicked_op in ['×', '÷']
-    
-    # 如果有乘除號，但你卻點了加減號 -> 報錯
-    if has_mul_div and not is_clicking_mul_div:
-        st.toast("🚫 順序錯誤！請先算乘除法 (× 或 ÷)", icon="⚠️")
+def attack(card_idx):
+    if st.session_state.game_over:
         return
 
-    # 2. 執行計算
-    left_num = current_expr[index-1]
-    right_num = current_expr[index+1]
+    card_val = st.session_state.hand.pop(card_idx)
+    st.session_state.current_damage += card_val
     
-    result = 0
-    if clicked_op == '+': result = left_num + right_num
-    elif clicked_op == '-': result = left_num - right_num
-    elif clicked_op == '×': result = left_num * right_num
-    elif clicked_op == '÷': result = left_num / right_num if right_num != 0 else left_num
+    damage_pct = float(st.session_state.current_damage / st.session_state.target_hp) * 100
     
-    # 3. 更新算式：把 [左, 符, 右] 變成 [結果]
-    # 例如：[1/2, +, 1/3] -> [5/6]
-    new_expr = current_expr[:index-1] + [result] + current_expr[index+2:]
-    st.session_state.puzzle = new_expr
-    
-    if len(new_expr) == 1:
+    # 判定結果
+    if st.session_state.current_damage == st.session_state.target_hp:
+        st.session_state.game_over = True
         st.balloons()
-        st.session_state.message = f"🎉 成功！答案是 {format_fraction(result)}"
+        st.session_state.msg = f"⚔️ 致命一擊！怪物倒下了！ (傷害: {st.session_state.current_damage})"
+    elif st.session_state.current_damage > st.session_state.target_hp:
+        st.session_state.game_over = True
+        st.session_state.msg = f"💥 傷害溢出！怪物狂暴了！ (當前: {st.session_state.current_damage} > 1)"
     else:
-        st.session_state.message = "✅ 計算成功！請繼續..."
+        st.session_state.msg = f"🗡️ 造成傷害！怪物還剩 {st.session_state.target_hp - st.session_state.current_damage} 血量"
 
-def reset_game():
-    st.session_state.puzzle = generate_puzzle()
-    st.session_state.message = "新題目開始！請點擊紅色符號"
+def restart():
+    init_game()
 
 # ==========================================
-# 4. 畫面顯示 (UI)
+# 3. 畫面顯示
 # ==========================================
 
-st.title("🔥 Math Fusion: 運算順序挑戰")
+st.title("⚔️ Math Dungeon: 分數獵人")
 
-col_top1, col_top2 = st.columns([3, 1])
-with col_top1:
-    st.markdown(f'<div class="instruction">{st.session_state.message}</div>', unsafe_allow_html=True)
-with col_top2:
-    if st.button("🔄 換一題"):
-        reset_game()
+# 頂部控制
+col1, col2 = st.columns([3, 1])
+with col1:
+    st.info(st.session_state.msg)
+with col2:
+    if st.button("🔄 下一隻怪物"):
+        restart()
         st.rerun()
 
-st.markdown("---")
+# --- 怪物區 (血條) ---
+target = st.session_state.target_hp
+current = st.session_state.current_damage
+# 計算血條百分比 (最高 100%)
+hp_percent = max(0, min(100, float((target - current) / target) * 100))
+dmg_percent = min(100, float(current / target) * 100)
 
-# 這裡是最重要的顯示邏輯
-# 我們用 columns 把算式橫向排開
-puzzle = st.session_state.puzzle
+st.markdown(f"""
+<div class="monster-box">
+    <h2>👹 混沌史萊姆</h2>
+    <div style="font-size: 1.2rem; margin-bottom: 5px;">
+        目標傷害：<span style="color:#f1c40f">{target}</span> | 
+        已造成傷害：<span style="color:#ff4d4d">{current}</span>
+    </div>
+    <div class="monster-hp-bar">
+        <div class="hp-fill" style="width: {dmg_percent}%;"></div>
+    </div>
+    <div style="margin-top:5px; font-size:0.9rem; color:#aaa;">怪物血量剩餘 {hp_percent:.1f}%</div>
+</div>
+""", unsafe_allow_html=True)
 
-# 勝利畫面
-if len(puzzle) == 1:
-    st.success(f"🏆 最終結果：{format_fraction(puzzle[0])}")
-    if st.button("挑戰下一關 ➡️", type="primary"):
-        reset_game()
-        st.rerun()
-
-else:
-    # 遊戲畫面
-    cols = st.columns(len(puzzle))
+# --- 戰鬥區 (出牌) ---
+if not st.session_state.game_over:
+    st.write("👇 點擊卡牌進行攻擊：")
     
-    for i, item in enumerate(puzzle):
-        with cols[i]:
-            if isinstance(item, Fraction):
-                # 如果是數字，顯示藍色卡片 (不能點)
-                st.markdown(f'<div class="num-card">{format_fraction(item)}</div>', unsafe_allow_html=True)
-            else:
-                # 如果是符號，顯示紅色按鈕 (可以點)
-                # 使用 uuid 確保每個按鈕 ID 唯一，防止報錯
-                if st.button(item, key=f"btn_{i}_{uuid.uuid4()}"):
-                    handle_click(i)
-                    st.rerun()
-
-st.markdown("---")
-st.info("💡 **玩法說明：** 數學規則是「先乘除、後加減」。請觀察算式，如果看到 × 或 ÷，**必須先點擊它們**！")
+    # 卡牌排列
+    cols = st.columns(4)
+    hand = st.session_state.hand
+    
+    for i, card in enumerate(hand):
+        with cols[i % 4]:
+            # 顯示分數
+            label = f"{card.numerator}/{card.denominator}"
+            if st.button(f"⚔️ {label}", key=f"card_{i}_{uuid.uuid4()}"):
+                attack(i)
+                st.rerun()
+else:
+    # 遊戲結束狀態
+    if current == target:
+        st.success("🏆 討伐成功！")
+        if st.button("繼續冒險 ->", type="primary"):
+            restart()
+            st.rerun()
+    else:
+        st.error("💀 討伐失敗...")
+        if st.button("重新挑戰", type="primary"):
+            # 重置當前局
+            st.session_state.current_damage = Fraction(0, 1)
+            st.session_state.hand = st.session_state.hand # 這裡簡化，不恢復手牌，直接重開比較快
+            init_game() 
+            st.rerun()
