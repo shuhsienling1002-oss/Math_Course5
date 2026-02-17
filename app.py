@@ -1,128 +1,137 @@
 import streamlit as st
 import random
-import math
+import uuid
 from fractions import Fraction
 from dataclasses import dataclass, field
-from typing import List, Tuple, Optional
-from itertools import combinations
+from typing import List, Optional
 
 # ==========================================
-# 1. 配置與 CSS (Dynamic Edition)
+# 0. 系統配置與全局 CSS (System Config)
 # ==========================================
 st.set_page_config(
-    page_title="分數拼湊 v4.3", 
-    page_icon="🧩", 
+    page_title="Fraction Master: Zero-Entropy",
+    page_icon="💠",
     layout="centered",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
+# 融合 Code-CRF 推薦的暗色系與高對比視覺風格
 st.markdown("""
 <style>
-    /* 全局背景 */
-    .stApp { background-color: #1e1e2e; color: #ffffff; }
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
+    /* 全局背景：深空藍灰 (Zero-Entropy Base) */
+    .stApp { background-color: #0f172a; color: #e2e8f0; }
     
-    /* 儀表板 */
-    .dashboard-container {
-        background: #313244;
+    /* 儀表板容器 */
+    .dashboard-box {
+        background: #1e293b;
+        border: 1px solid #475569;
         border-radius: 12px;
-        padding: 16px;
-        border: 2px solid #585b70;
-        margin-bottom: 12px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+        padding: 15px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
     }
     
-    /* 算式區 */
-    .equation-box {
-        background: #11111b;
-        color: #f9e2af;
+    /* 數值顯示：高亮 */
+    .metric-value {
         font-family: 'Courier New', monospace;
-        padding: 12px;
-        border-radius: 8px;
-        text-align: center;
-        margin-bottom: 12px;
-        border: 1px solid #45475a;
-        font-size: 1.2rem;
-        font-weight: bold;
+        font-weight: 900;
+        font-size: 1.8rem;
+        text-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+    }
+    
+    /* 卡牌按鈕優化 */
+    div.stButton > button {
+        background: linear-gradient(180deg, #334155, #1e293b) !important;
+        color: #f1f5f9 !important;
+        border: 1px solid #64748b !important;
+        border-radius: 8px !important;
+        font-size: 1.1rem !important;
+        font-weight: bold !important;
+        transition: all 0.2s !important;
+        height: auto !important;
+        padding: 10px 0 !important;
+    }
+    div.stButton > button:hover {
+        border-color: #38bdf8 !important;
+        color: #38bdf8 !important;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(56, 189, 248, 0.2);
     }
 
-    /* 圓餅圖 */
+    /* 圓餅圖 CSS (來自 app.py) */
     .fraction-visual-container {
         display: flex; gap: 4px; align-items: center; justify-content: center;
-        margin-bottom: 6px; flex-wrap: wrap;
+        margin-bottom: 4px; flex-wrap: wrap;
     }
     .pie-chart {
-        width: 32px; height: 32px; border-radius: 50%;
-        background: conic-gradient(#89b4fa var(--p), #45475a 0);
-        border: 2px solid #cba6f7; flex-shrink: 0;
+        width: 24px; height: 24px; border-radius: 50%;
+        background: conic-gradient(#38bdf8 var(--p), #334155 0);
+        border: 2px solid #94a3b8; flex-shrink: 0;
     }
-    .pie-full { background: #89b4fa; border-color: #f9e2af; }
-    .pie-negative { background: conic-gradient(#f38ba8 var(--p), #45475a 0); border-color: #f38ba8; }
-    .pie-full-negative { background: #f38ba8; border-color: #eba0ac; }
+    .pie-full { background: #38bdf8; border-color: #bae6fd; }
+    .pie-negative { background: conic-gradient(#f472b6 var(--p), #334155 0); border-color: #f472b6; }
+    .pie-full-negative { background: #f472b6; border-color: #fbcfe8; }
 
-    /* 按鈕樣式 */
-    div.stButton > button {
-        background-color: #cba6f7 !important; 
-        color: #11111b !important;
-        border-radius: 10px !important; 
-        font-size: 22px !important;
-        font-weight: 800 !important; 
-        padding: 14px 0 !important; 
-        width: 100%;
-        border: 2px solid transparent !important;
-        transition: transform 0.1s;
+    /* 反應爐算式區 (來自 app (1).py) */
+    .reactor-box {
+        background: #020617;
+        border: 1px dashed #64748b;
+        border-radius: 8px;
+        padding: 10px;
+        text-align: center;
+        margin: 10px 0;
+        font-family: 'Times New Roman', serif;
     }
-    div.stButton > button:active { transform: scale(0.96); }
-
-    /* 進度條 */
-    .progress-track {
-        background: #45475a; height: 28px; border-radius: 14px;
-        position: relative; overflow: hidden; margin-top: 12px;
-        border: 1px solid #585b70;
-    }
-    .progress-fill { height: 100%; transition: width 0.5s ease; background: linear-gradient(90deg, #89b4fa, #b4befe); }
-    .fill-warning { background: linear-gradient(90deg, #f9e2af, #fab387); }
-    .fill-danger { background: linear-gradient(90deg, #f38ba8, #eba0ac); }
-    .target-line { position: absolute; top: 0; bottom: 0; width: 4px; background: #a6e3a1; z-index: 10; box-shadow: 0 0 10px #a6e3a1; }
     
     /* 狀態標籤 */
     .status-badge {
-        display: inline-block; padding: 6px 10px; border-radius: 6px;
-        font-size: 0.9rem; font-weight: bold; margin-bottom: 10px;
+        display: inline-block; padding: 4px 12px; border-radius: 12px;
+        font-size: 0.85rem; font-weight: bold; margin-bottom: 5px;
     }
-    .status-ok { background: #1e3a23; color: #a6e3a1; border: 1px solid #a6e3a1; }
-    .status-dead { background: #3a1e26; color: #f38ba8; border: 1px solid #f38ba8; }
-
-    .dash-label { color: #bac2de; font-size: 1rem; font-weight: bold; margin-bottom: 4px; }
-    .dash-value { font-size: 2rem; font-weight: 900; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
-    
-    /* 訊息框 */
-    .msg-box {
-        padding: 12px 16px; border-radius: 8px; margin-bottom: 16px;
-        font-weight: bold; font-size: 1rem; display: flex; align-items: center;
-    }
-    .msg-info { background-color: rgba(137, 180, 250, 0.2); color: #89b4fa; border: 1px solid #89b4fa; }
-    .msg-success { background-color: rgba(166, 227, 161, 0.2); color: #a6e3a1; border: 1px solid #a6e3a1; }
-    .msg-error { background-color: rgba(243, 139, 168, 0.2); color: #f38ba8; border: 1px solid #f38ba8; }
+    .badge-add { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid #38bdf8; }
+    .badge-mult { background: rgba(168, 85, 247, 0.2); color: #a855f7; border: 1px solid #a855f7; }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. 數據模型
+# 1. 統一數據模型 (Unified Domain Model)
 # ==========================================
 
 @dataclass
-class Card:
+class MathCard:
     numerator: int
     denominator: int
-    id: str = field(default_factory=lambda: str(random.randint(10000, 99999)))
+    # 模式標記：True=除法卡(用於乘除模式), False=普通數值
+    is_division: bool = False 
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     @property
     def value(self) -> Fraction:
+        """獲取數學值"""
         return Fraction(self.numerator, self.denominator)
 
-    def get_visual_html(self) -> str:
+    @property
+    def display_text_add(self) -> str:
+        """加減模式顯示"""
+        n, d = self.numerator, self.denominator
+        # 處理整數與帶分數顯示邏輯
+        if d == 1: return f"{n}"
+        if abs(n) > d:
+            whole = int(n/d)
+            rem = abs(n) % d
+            if rem == 0: return f"{whole}"
+            return f"{whole} {rem}/{d}"
+        return f"{n}/{d}"
+
+    @property
+    def display_text_mult(self) -> str:
+        """乘除模式顯示 (帶運算符)"""
+        op = "➗" if self.is_division else "✖️"
+        n_display = f"({self.numerator})" if self.numerator < 0 else f"{self.numerator}"
+        return f"{op} {n_display}/{self.denominator}"
+
+    def get_pie_chart_html(self) -> str:
+        """生成圓餅圖 HTML (視覺化第一性原理)"""
         val = self.value
         abs_val = abs(val)
         integer_part = int(abs_val)
@@ -132,303 +141,396 @@ class Card:
         pie_class = "pie-negative" if is_neg else "pie-chart"
         full_class = "pie-full-negative" if is_neg else "pie-full"
         
-        html_content = ""
-        # 顯示最多 3 個滿圓，避免手機版面爆掉
-        display_integers = min(integer_part, 3) 
-        for _ in range(display_integers):
-            html_content += f'<div class="pie-chart {full_class}" style="--p: 100%;"></div>'
+        html = ""
+        # 限制顯示數量防止崩潰
+        display_ints = min(integer_part, 3) 
+        for _ in range(display_ints):
+            html += f'<div class="{full_class} pie-chart" style="--p: 100%;"></div>'
         if integer_part > 3:
-            html_content += '<span style="font-size:16px; color:#f9e2af; font-weight:bold;">+..</span>'
+            html += '<span style="font-size:12px; color:#94a3b8;">+..</span>'
         if fraction_part > 0:
             percent = float(fraction_part) * 100
-            html_content += f'<div class="{pie_class}" style="--p: {percent}%;"></div>'
-
-        return f'<div class="fraction-visual-container">{html_content}</div>'
+            html += f'<div class="{pie_class}" style="--p: {percent}%;"></div>'
+            
+        return f'<div class="fraction-visual-container">{html}</div>'
 
 # ==========================================
-# 3. 核心引擎 (Dynamic Targets)
+# 2. 雙模引擎 (Dual Engines)
 # ==========================================
 
 class GameEngine:
     @staticmethod
-    def init_state():
-        if 'level' not in st.session_state or 'game_status' not in st.session_state:
-            st.session_state.level = 1
-            GameEngine.start_level(1)
+    def generate_level(mode: str, level: int):
+        """
+        工廠模式：根據模式生成關卡數據
+        Mode 'add': 加減法 (The Construct)
+        Mode 'mult': 乘除法 (The Reactor)
+        """
+        if mode == 'add':
+            return GameEngine._gen_add_level(level)
+        else:
+            return GameEngine._gen_mult_level(level)
 
     @staticmethod
-    def start_level(level: int):
-        st.session_state.level = level
-        target, start_val, hand, title = GameEngine._generate_smart_math(level)
-        st.session_state.target = target
-        st.session_state.current = start_val
-        st.session_state.hand = hand
-        st.session_state.played_history = []
-        st.session_state.game_status = 'playing'
-        st.session_state.level_title = title
-        st.session_state.msg = "請湊出目標數值"
-        st.session_state.msg_type = "info"
-        st.session_state.solvable = True
-        
-        GameEngine.check_solvability()
-
-    @staticmethod
-    def _generate_smart_math(level: int):
-        # [v4.3 Feature]: 動態目標生成
-        # 透過 random.choice 讓每一局的目標都不一樣
-        
-        pools = {
-            1: {
-                'dens': [2, 4], 
-                'target_pool': [Fraction(1, 1)], # 暖身固定為 1
-                'count': 3, 'neg': False,
-                'title': "暖身：完整的一 (Target 1)"
-            },     
-            2: {
-                'dens': [2, 3, 6], 
-                'target_pool': [Fraction(1, 1), Fraction(2, 1)], # 目標可能是 1 或 2
-                'count': 3, 'neg': False,
-                'title': "進階：1 與 2 的切換"
-            },  
-            3: {
-                'dens': [2, 4, 8], 
-                'target_pool': [Fraction(1, 1), Fraction(2, 1), Fraction(3, 1), Fraction(3, 2)], # 更多變化 (含1.5)
-                'count': 4, 'neg': True,
-                'title': "挑戰：整數與帶分數"
-            },   
-            4: {
-                'dens': [2, 5, 10], 
-                'target_pool': [Fraction(0, 1)], # 負數歸零關卡固定為 0
-                'count': 4, 'neg': True,
-                'title': "歸零：正負抵銷 (Target 0)"
-            },  
-            5: {
-                'dens': [3, 4, 6], 
-                'target_pool': [Fraction(1, 1), Fraction(2, 1), Fraction(1, 2)], # 混合：可能有 0.5
-                'count': 5, 'neg': True,
-                'title': "大師：變幻莫測"
-            }    
+    def _gen_add_level(level: int):
+        # 配置參考自 app.py (分數拼湊)
+        configs = {
+            1: {'dens': [2, 4], 'count': 2, 'neg': False, 'title': "基礎堆疊 (同分母)"},
+            2: {'dens': [2, 3, 6], 'count': 3, 'neg': False, 'title': "進階通分 (異分母)"},
+            3: {'dens': [2, 4, 8], 'count': 3, 'neg': True, 'title': "正負抵銷 (整數目標)"},
+            4: {'dens': [2, 5, 10], 'count': 4, 'neg': True, 'title': "歸零挑戰 (Target 0)"},
+            5: {'dens': [3, 4, 6], 'count': 5, 'neg': True, 'title': "大師級混戰"}
         }
-        cfg = pools.get(level, pools[5])
+        cfg = configs.get(level, configs[5])
         
-        # 隨機選取目標
-        target_val = random.choice(cfg['target_pool'])
-        correct_hand = []
+        # 動態目標生成
+        target_pool = [Fraction(1,1), Fraction(0,1), Fraction(2,1)] if cfg['neg'] else [Fraction(1,1), Fraction(2,1)]
+        target = random.choice(target_pool)
         
+        hand = []
         current_sum = Fraction(0, 1)
+        
+        # 逆向生成保證有解
         for _ in range(cfg['count'] - 1):
             d = random.choice(cfg['dens'])
-            n = random.choice([1, 2, 3])
+            n = random.choice([1, 2] if d < 5 else [1, 2, 3])
             if cfg['neg'] and random.random() < 0.4: n = -n
-            card = Card(n, d)
-            correct_hand.append(card)
+            card = MathCard(n, d)
+            hand.append(card)
             current_sum += card.value
             
-        needed = target_val - current_sum
-        
-        # 防止生成太醜的分數 (分母大於20或分子絕對值大於10)
-        if needed.denominator > 20 or abs(needed.numerator) > 10:
-            return GameEngine._generate_smart_math(level)
+        needed = target - current_sum
+        # 避免生成過於離譜的分數
+        if needed.denominator > 12 or abs(needed.numerator) > 12:
+            return GameEngine._gen_add_level(level) # 重試
             
-        last_card = Card(needed.numerator, needed.denominator)
-        correct_hand.append(last_card)
+        hand.append(MathCard(needed.numerator, needed.denominator))
         
-        distractors = []
-        d_count = 2
-        for _ in range(d_count):
+        # 加入干擾項
+        for _ in range(2):
             d = random.choice(cfg['dens'])
-            n = random.choice([1, 2])
-            if cfg['neg'] and random.random() < 0.5: n = -n
-            distractors.append(Card(n, d))
+            n = random.choice([1, -1] if cfg['neg'] else [1])
+            hand.append(MathCard(n, d))
             
-        hand = correct_hand + distractors
         random.shuffle(hand)
-        
-        return target_val, Fraction(0, 1), hand, cfg['title']
+        return {"target": target, "hand": hand, "start_val": Fraction(0,1), "title": cfg['title']}
 
     @staticmethod
-    def check_solvability():
-        target = st.session_state.target
-        current = st.session_state.current
-        hand = st.session_state.hand
-        needed = target - current
-        vals = [c.value for c in hand]
-        possible = False
+    def _gen_mult_level(level: int):
+        # 配置參考自 app (1).py (分數鍊金術)
+        configs = {
+            1: {'nums': [2, 3], 'steps': 2, 'div': False, 'neg': False, 'title': "基礎合成 (整數)"},
+            2: {'nums': [2, 3, 4], 'steps': 2, 'div': False, 'neg': False, 'title': "等價交換 (約分)"},
+            3: {'nums': [2, 3, 5], 'steps': 3, 'div': True, 'neg': False, 'title': "逆向煉成 (除法)"},
+            4: {'nums': [2, 3, 5], 'steps': 3, 'div': True, 'neg': True, 'title': "極性反轉 (負數)"},
+            5: {'nums': [2, 3, 4, 5, 6], 'steps': 4, 'div': True, 'neg': True, 'title': "賢者之石 (高階)"}
+        }
+        cfg = configs.get(level, configs[5])
         
-        for r in range(len(vals) + 1):
-            for subset in combinations(vals, r):
-                if sum(subset) == needed:
-                    possible = True
+        target = Fraction(1, 1)
+        correct_cards = []
+        
+        for _ in range(cfg['steps']):
+            n = random.choice(cfg['nums'])
+            d = random.choice(cfg['nums'])
+            while n == d: d = random.choice(cfg['nums'])
+            if cfg['neg'] and random.random() < 0.5: n = -n
+            is_div = cfg['div'] and random.random() < 0.3
+            
+            card = MathCard(n, d, is_division=is_div)
+            correct_cards.append(card)
+            
+            # 乘除運算邏輯
+            val = Fraction(d, n) if is_div else Fraction(n, d)
+            target *= val
+
+        # 干擾項
+        distractors = []
+        for _ in range(2):
+            n = random.choice(cfg['nums'])
+            d = random.choice(cfg['nums'])
+            is_div = cfg['div'] and random.random() < 0.3
+            distractors.append(MathCard(n, d, is_division=is_div))
+
+        hand = correct_cards + distractors
+        random.shuffle(hand)
+        return {"target": target, "hand": hand, "start_val": Fraction(1,1), "title": cfg['title']}
+
+    @staticmethod
+    def generate_latex_visual(history: List[MathCard]) -> str:
+        """生成乘除法的視覺化約分字串 (The Reactor Core)"""
+        if not history: return "1"
+        
+        parts_tex = []
+        nums, dens = [], []
+        
+        for card in history:
+            n, d = card.numerator, card.denominator
+            if card.is_division:
+                parts_tex.append(f"\\div \\frac{{{n}}}{{{d}}}")
+                nums.append(d) # 翻轉
+                dens.append(n)
+            else:
+                parts_tex.append(f"\\times \\frac{{{n}}}{{{d}}}")
+                nums.append(n)
+                dens.append(d)
+
+        # 簡單貪婪約分標記
+        cancel_n = [False] * len(nums)
+        cancel_d = [False] * len(dens)
+        for i in range(len(nums)):
+            for j in range(len(dens)):
+                if not cancel_d[j] and not cancel_n[i] and abs(nums[i]) == abs(dens[j]):
+                    cancel_n[i] = True
+                    cancel_d[j] = True
                     break
-            if possible: break
-            
-        st.session_state.solvable = possible
-        if not possible and st.session_state.game_status == 'playing':
-            st.toast("⚠️ 此路不通！請悔棋 (Dead End)", icon="🚫")
+        
+        # 構建 LaTeX
+        n_tex = " \\cdot ".join([f"\\cancel{{{x}}}" if c else f"{x}" for x, c in zip(nums, cancel_n)])
+        d_tex = " \\cdot ".join([f"\\cancel{{{x}}}" if c else f"{x}" for x, c in zip(dens, cancel_d)])
+        
+        raw_eq = "".join(parts_tex)
+        if raw_eq.startswith("\\times"): raw_eq = raw_eq[6:]
+        
+        return f"{raw_eq} = \\frac{{{n_tex}}}{{{d_tex}}}"
+
+# ==========================================
+# 3. 狀態管理 (Session State Manager)
+# ==========================================
+
+class StateManager:
+    @staticmethod
+    def init():
+        defaults = {
+            'mode': 'add', # add or mult
+            'level': 1,
+            'target': Fraction(1,1),
+            'hand': [],
+            'history': [],
+            'current_val': Fraction(0,1),
+            'game_status': 'setup', # setup, playing, won, lost
+            'level_title': '',
+            'msg': '歡迎來到零熵算術領域',
+            'msg_type': 'info'
+        }
+        for k, v in defaults.items():
+            if k not in st.session_state:
+                st.session_state[k] = v
 
     @staticmethod
-    def play_card_callback(card_idx: int):
+    def switch_mode(new_mode):
+        st.session_state.mode = new_mode
+        st.session_state.level = 1
+        st.session_state.game_status = 'setup'
+        st.rerun()
+
+    @staticmethod
+    def start_level():
+        data = GameEngine.generate_level(st.session_state.mode, st.session_state.level)
+        st.session_state.target = data['target']
+        st.session_state.hand = data['hand']
+        st.session_state.current_val = data['start_val']
+        st.session_state.level_title = data['title']
+        st.session_state.history = []
+        st.session_state.game_status = 'playing'
+        st.session_state.msg = "請選擇卡牌達成目標"
+        st.session_state.msg_type = 'info'
+
+    @staticmethod
+    def play_card(idx):
         hand = st.session_state.hand
-        if 0 <= card_idx < len(hand):
-            card = hand.pop(card_idx)
-            st.session_state.current += card.value
-            st.session_state.played_history.append(card)
+        if 0 <= idx < len(hand):
+            card = hand.pop(idx)
+            st.session_state.history.append(card)
             
-            GameEngine.check_solvability()
-            GameEngine._check_win_condition()
+            # 更新數值
+            if st.session_state.mode == 'add':
+                st.session_state.current_val += card.value
+            else:
+                op_val = Fraction(card.denominator, card.numerator) if card.is_division else Fraction(card.numerator, card.denominator)
+                st.session_state.current_val *= op_val
+            
+            StateManager.check_win()
 
     @staticmethod
-    def undo_callback():
-        if st.session_state.played_history:
-            card = st.session_state.played_history.pop()
-            st.session_state.current -= card.value
+    def undo():
+        if st.session_state.history:
+            card = st.session_state.history.pop()
             st.session_state.hand.append(card)
             
-            st.toast("已悔棋", icon="↩️")
+            # 逆向操作
+            if st.session_state.mode == 'add':
+                st.session_state.current_val -= card.value
+            else:
+                op_val = Fraction(card.denominator, card.numerator) if card.is_division else Fraction(card.numerator, card.denominator)
+                st.session_state.current_val /= op_val
+            
             st.session_state.game_status = 'playing'
-            GameEngine.check_solvability()
+            st.toast("已悔棋 (Entropy Reversal)", icon="↩️")
 
     @staticmethod
-    def _check_win_condition():
-        curr = st.session_state.current
-        tgt = st.session_state.target
-        if curr == tgt:
+    def check_win():
+        target = st.session_state.target
+        current = st.session_state.current_val
+        
+        if current == target:
             st.session_state.game_status = 'won'
-            st.toast("挑戰成功！", icon="🎉")
+            st.session_state.msg = "✨ 運算完美收斂！(Zero Entropy Achieved)"
+            st.session_state.msg_type = 'success'
+            st.balloons()
+        elif not st.session_state.hand:
+            st.session_state.game_status = 'lost'
+            st.session_state.msg = "🌑 手牌耗盡，路徑崩塌。"
+            st.session_state.msg_type = 'error'
 
 # ==========================================
-# 4. UI 渲染層
+# 4. UI 渲染組件 (Components)
 # ==========================================
 
-def render_message_box(msg, type='info'):
-    icons = {'info': 'ℹ️', 'success': '🎉', 'error': '⚠️', 'warning': '⚡'}
-    icon = icons.get(type, 'ℹ️')
-    html = f"""
-    <div class="msg-box msg-{type}">
-        <span style="margin-right:10px; font-size:1.2rem;">{icon}</span>
-        <span>{msg}</span>
-    </div>
-    """
-    st.markdown(html, unsafe_allow_html=True)
-
-def render_dashboard(current: Fraction, target: Fraction):
-    # 計算進度條最大值，需考慮目標變動
-    calc_target = target if target != 0 else Fraction(1,1)
+def render_dashboard():
+    """統一的頂部儀表板"""
+    mode = st.session_state.mode
+    target = st.session_state.target
+    current = st.session_state.current_val
+    level = st.session_state.level
     
-    # 動態調整 max_val，確保目標不會頂到最右邊
-    max_val = max(calc_target * Fraction(3, 2), current * Fraction(11, 10), Fraction(2, 1))
-    if max_val == 0: max_val = Fraction(1,1)
-
-    curr_pct = float(current / max_val) * 100
-    tgt_pct = float(target / max_val) * 100
+    # 模式標籤
+    badge_cls = "badge-add" if mode == 'add' else "badge-mult"
+    mode_name = "THE CONSTRUCT (加減法)" if mode == 'add' else "THE REACTOR (乘除法)"
     
-    fill_class = "progress-fill"
-    if current > target: fill_class += " fill-warning"
-    status = st.session_state.get('game_status', 'playing')
-    if status == 'lost': fill_class += " fill-danger"
+    st.markdown(f'<div class="status-badge {badge_cls}">{mode_name} Lv.{level}</div>', unsafe_allow_html=True)
+    st.markdown(f"**任務：{st.session_state.level_title}**")
+    
+    # 進度顯示
+    cols = st.columns([1, 0.2, 1])
+    with cols[0]:
+        st.markdown(f"<div style='text-align:center;color:#94a3b8'>TARGET</div>", unsafe_allow_html=True)
+        st.latex(f"\\huge {target.numerator}/{target.denominator}" if target.denominator!=1 else f"\\huge {target.numerator}")
+    with cols[1]:
+        icon = "⚖️" if st.session_state.game_status == 'playing' else ("✅" if st.session_state.game_status=='won' else "❌")
+        st.markdown(f"<div style='text-align:center;font-size:2rem;padding-top:10px'>{icon}</div>", unsafe_allow_html=True)
+    with cols[2]:
+        color = "#38bdf8" if mode == 'add' else "#a855f7"
+        if st.session_state.game_status == 'won': color = "#4ade80"
+        
+        st.markdown(f"<div style='text-align:center;color:#94a3b8'>CURRENT</div>", unsafe_allow_html=True)
+        val_latex = f"\\huge \\color{{{color}}}{{{current.numerator}/{current.denominator}}}" if current.denominator!=1 else f"\\huge \\color{{{color}}}{{{current.numerator}}}"
+        st.latex(val_latex)
 
-    solvable = st.session_state.get('solvable', True)
-    status_html = ""
-    if not solvable and status == 'playing':
-        status_html = '<div class="status-badge status-dead">⚠️ 死局 (Dead End)</div>'
-    else:
-        status_html = '<div class="status-badge status-ok">✅ 路徑通暢 (Solvable)</div>'
-
-    html = f"""
-<div class="dashboard-container">
-    {status_html}
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <div style="text-align:center; width:45%;">
-            <div class="dash-label">🎯 目標 (Target)</div>
-            <div class="dash-value" style="color:#a6e3a1;">
-                {target}
+    # 進度條 (僅加法模式適合線性進度，乘法模式顯示動態)
+    if mode == 'add':
+        try:
+            # 安全的進度計算，避免除以零
+            max_val = max(float(target) * 1.5, float(current) * 1.2, 1.0)
+            cur_pct = min(max(float(current) / max_val, 0.0), 1.0)
+            tgt_pct = min(max(float(target) / max_val, 0.0), 1.0)
+            
+            st.markdown(f"""
+            <div style="background:#334155;height:8px;border-radius:4px;position:relative;margin-top:10px;">
+                <div style="background:#38bdf8;width:{cur_pct*100}%;height:100%;border-radius:4px;transition:width 0.5s;"></div>
+                <div style="background:#4ade80;width:4px;height:12px;position:absolute;top:-2px;left:{tgt_pct*100}%;"></div>
             </div>
-        </div>
-        <div style="font-size:1.5rem; color:#585b70; font-weight:900;">VS</div>
-        <div style="text-align:center; width:45%;">
-            <div class="dash-label">⚗️ 當前 (Current)</div>
-            <div class="dash-value" style="color:#89b4fa;">
-                {current}
-            </div>
-        </div>
-    </div>
-    <div class="progress-track">
-        <div class="target-line" style="left: {tgt_pct}%;"></div>
-        <div class="{fill_class}" style="width: {max(0, min(curr_pct, 100))}%;"></div>
-    </div>
-</div>
-"""
-    st.markdown(html, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
+        except:
+            pass
 
-def render_equation_log():
-    history = st.session_state.played_history
-    if not history:
-        eq_text = "0 (起點)"
-    else:
-        parts = []
-        for c in history:
-            val_str = f"{c.numerator}/{c.denominator}"
-            if c.numerator < 0: val_str = f"({val_str})"
-            parts.append(val_str)
-        eq_text = " + ".join(parts) + f" = {st.session_state.current}"
+def render_play_area():
+    """遊戲操作區"""
+    mode = st.session_state.mode
     
-    st.markdown(f'<div class="equation-box">{eq_text}</div>', unsafe_allow_html=True)
+    # 1. 顯示歷史/算式
+    st.markdown("---")
+    if mode == 'add':
+        # 加法模式：顯示算式字串
+        eq_parts = [f"{c.value}" for c in st.session_state.history]
+        eq_str = " + ".join(eq_parts) if eq_parts else "0"
+        st.caption(f"運算鏈： {eq_str} = {st.session_state.current_val}")
+    else:
+        # 乘法模式：顯示反應爐 LaTeX
+        visual_latex = GameEngine.generate_latex_visual(st.session_state.history)
+        st.markdown(f'<div class="reactor-box">', unsafe_allow_html=True)
+        st.latex(f"\\Large {visual_latex} = {st.session_state.current_val}")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # 2. 手牌區
+    if st.session_state.game_status == 'playing':
+        hand = st.session_state.hand
+        if hand:
+            st.write("👇 點擊投入運算：")
+            cols = st.columns(4)
+            for i, card in enumerate(hand):
+                with cols[i % 4]:
+                    # 視覺輔助：加法顯示圓餅圖，乘法不顯示
+                    if mode == 'add':
+                        st.markdown(card.get_pie_chart_html(), unsafe_allow_html=True)
+                        label = card.display_text_add
+                    else:
+                        label = card.display_text_mult
+                    
+                    if st.button(label, key=f"card_{card.id}", use_container_width=True):
+                        StateManager.play_card(i)
+                        st.rerun()
+        
+        # 3. 控制區
+        col_undo, col_reset = st.columns([1, 4])
+        with col_undo:
+            if st.session_state.history:
+                st.button("↩️ 撤銷", on_click=StateManager.undo)
+    
+    # 4. 結算區
+    elif st.session_state.game_status == 'won':
+        if st.button("🚀 前往下一層", type="primary", use_container_width=True):
+            st.session_state.level += 1
+            StateManager.start_level()
+            st.rerun()
+            
+    elif st.session_state.game_status == 'lost':
+        if st.button("💥 重置反應爐", type="primary", use_container_width=True):
+            StateManager.start_level()
+            st.rerun()
 
 # ==========================================
-# 5. 主程式
+# 5. 主程式 (Main Loop)
 # ==========================================
 
-GameEngine.init_state()
+def main():
+    StateManager.init()
 
-st.markdown(f"#### 🧩 Lv.{st.session_state.level} {st.session_state.level_title}")
-
-render_message_box(st.session_state.msg, st.session_state.msg_type)
-
-render_dashboard(st.session_state.current, st.session_state.target)
-render_equation_log()
-
-if st.session_state.game_status == 'playing':
-    hand = st.session_state.hand
-    if not hand:
-        render_message_box("手牌耗盡！請重試", "error")
-        if st.button("🔄 重試", use_container_width=True):
-            GameEngine.start_level(st.session_state.level)
+    # --- Sidebar: Mode Selection ---
+    with st.sidebar:
+        st.title("💠 零熵算術")
+        st.markdown("---")
+        
+        mode_select = st.radio(
+            "選擇運算模組：",
+            ('add', 'mult'),
+            format_func=lambda x: "➕ 拼湊 (加減)" if x=='add' else "✖️ 煉金 (乘除)",
+            index=0 if st.session_state.mode=='add' else 1
+        )
+        
+        if mode_select != st.session_state.mode:
+            StateManager.switch_mode(mode_select)
+        
+        st.markdown("---")
+        st.caption("Architecture v6.4 | Zero-Entropy Math")
+        if st.button("🔄 完全重置"):
+            st.session_state.clear()
             st.rerun()
-    else:
-        cols = st.columns(2)
-        for i, card in enumerate(hand):
-            with cols[i % 2]:
-                st.markdown(card.get_visual_html(), unsafe_allow_html=True)
-                n, d = card.numerator, card.denominator
-                label = f"{n}/{d}"
-                if abs(n) >= d:
-                    whole = int(n/d)
-                    rem = abs(n) % d
-                    label = f"{whole}" if rem == 0 else f"{whole} {rem}/{d}"
 
-                st.button(
-                    label, 
-                    key=f"btn_{card.id}", 
-                    on_click=GameEngine.play_card_callback, 
-                    args=(i,),
-                    use_container_width=True
-                )
+    # --- Main Content ---
+    
+    # 檢查是否需要初始化關卡
+    if st.session_state.game_status == 'setup':
+        StateManager.start_level()
+        st.rerun()
 
-    st.markdown("---")
-    # 悔棋按鈕全寬 (無提示)
-    st.button("↩️ 悔棋 (Undo)", on_click=GameEngine.undo_callback, use_container_width=True)
+    # 渲染儀表板
+    st.markdown('<div class="dashboard-box">', unsafe_allow_html=True)
+    render_dashboard()
+    st.markdown('</div>', unsafe_allow_html=True)
 
-else:
-    st.markdown("---")
-    if st.session_state.game_status == 'won':
-        st.balloons()
-        if st.button("🚀 下一關", type="primary", use_container_width=True):
-            GameEngine.start_level(st.session_state.level + 1)
-            st.rerun()
-        if st.button("🔄 重玩本關", use_container_width=True):
-            GameEngine.start_level(st.session_state.level)
-            st.rerun()
-    else:
-        if st.button("🔄 再試一次", type="primary", use_container_width=True):
-            GameEngine.start_level(st.session_state.level)
-            st.rerun()
+    # 渲染操作區
+    render_play_area()
+
+if __name__ == "__main__":
+    main()
